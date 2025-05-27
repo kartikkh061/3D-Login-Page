@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Login Page</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Custom CSS for 3D effects and overall styling */
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent scrollbars due to 3D effects */
+            background-color: #121212; /* Very dark grey/near black background */
+            cursor: none; /* Hide default cursor to enhance fire effect */
+        }
+
+        #webgl-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Send to background */
+            background: linear-gradient(135deg, #212121, #000000); /* Dark grey to black gradient */
+        }
+
+        .login-container {
+            position: relative;
+            z-index: 1; /* Keep login form above 3D background */
+            perspective: 1000px; /* Define perspective for 3D transforms */
+        }
+
+        .login-box {
+            transform-style: preserve-3d; /* Children will participate in 3D scene */
+            transition: transform 0.1s ease-out; /* Smooth transition for 3D rotation */
+            background: rgba(33, 33, 33, 0.7); /* Dark grey semi-transparent background */
+            backdrop-filter: blur(10px); /* Frosted glass effect */
+            border: 1px solid rgba(60, 60, 60, 0.8); /* Lighter grey border */
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6); /* Stronger shadow */
+            animation: breathe 4s ease-in-out infinite alternate; /* Breathing effect */
+        }
+
+        /* Keyframes for the subtle breathing effect */
+        @keyframes breathe {
+            0% {
+                transform: scale(1) rotateX(var(--rotateX, 0deg)) rotateY(var(--rotateY, 0deg));
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+            }
+            100% {
+                transform: scale(1.005) rotateX(var(--rotateX, 0deg)) rotateY(var(--rotateY, 0deg));
+                box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.7);
+            }
+        }
+
+        .input-field {
+            background-color: rgba(45, 45, 45, 0.8); /* Darker input background */
+            border: 1px solid rgba(80, 80, 80, 0.8);
+            color: #e0e0e0; /* Light grey text color */
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            background-color: rgba(60, 60, 60, 0.9);
+            border-color: #a0a0a0; /* Medium grey border on focus */
+            box-shadow: 0 0 0 3px rgba(160, 160, 160, 0.5);
+        }
+
+        .input-field::placeholder {
+            color: #b0b0b0; /* Lighter placeholder text */
+        }
+
+        .login-button {
+            background: linear-gradient(90deg, #505050, #303030); /* Grey gradient button */
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        .login-button:hover {
+            background: linear-gradient(90deg, #303030, #202020);
+            transform: translateY(-2px); /* Slight lift on hover */
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.6);
+        }
+
+        .text-gradient {
+            background: linear-gradient(45deg, #a0a0a0, #d0d0d0); /* Light grey gradient for text */
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen text-gray-100">
+    <div id="webgl-container"></div>
+
+    <div class="login-container flex flex-col items-center justify-center w-full max-w-md p-8 rounded-xl shadow-lg">
+        <div id="login-box" class="login-box w-full p-8 rounded-xl">
+            <h2 class="text-3xl font-extrabold text-center mb-8 text-gradient">Welcome Back!</h2>
+            <form class="space-y-6">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter your username"
+                           class="input-field w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password"
+                           class="input-field w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button type="submit"
+                        class="login-button w-full py-3 rounded-lg text-white font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900">
+                    Login
+                </button>
+            </form>
+            <p class="mt-8 text-center text-gray-400 text-sm">
+                Don't have an account? <a href="#" class="text-blue-400 hover:underline">Sign Up</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Three.js setup
+        let scene, camera, renderer;
+        let mouseX = 0, mouseY = 0;
+        let prevMouseX = 0, prevMouseY = 0; // Store previous mouse position
+        let windowHalfX = window.innerWidth / 2;
+        let windowHalfY = window.innerHeight / 2;
+        const loginBox = document.getElementById('login-box');
+
+        // Array to hold individual fire particles
+        const fireParticles = [];
+        const maxFireParticles = 1500; // Even higher limit for denser fire
+
+        // Define a wider range of fire colors for more realism
+        const fireColors = [
+            new THREE.Color(0xFF0000),   // Deep Red
+            new THREE.Color(0xFF4500),   // OrangeRed
+            new THREE.Color(0xFF8C00),   // DarkOrange
+            new THREE.Color(0xFFD700),   // Gold
+            new THREE.Color(0xFFFF00),   // Yellow
+            new THREE.Color(0xFFFAF0),   // FloralWhite (for hottest parts)
+            new THREE.Color(0xADD8E6)    // LightBlue (for very hot, almost white parts - subtle)
+        ];
+
+        // Create a reusable texture for the fire particles (radial gradient)
+        function createParticleTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; // Increased resolution
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)'); // Brightest core
+            gradient.addColorStop(0.1, 'rgba(255,255,255,0.9)');
+            gradient.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+            gradient.addColorStop(0.6, 'rgba(255,255,255,0.3)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)'); // Transparent edge
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            return new THREE.CanvasTexture(canvas);
+        }
+        const particleTexture = createParticleTexture();
+
+        function init() {
+            const container = document.getElementById('webgl-container');
+
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 100; // Closer camera for better fire visibility
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            // Lights (less critical for self-illuminating particles, but good practice)
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(0, 1, 1).normalize();
+            scene.add(directionalLight);
+
+            // Event Listeners
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Initialize prevMouseX/Y
+            prevMouseX = window.innerWidth / 2;
+            prevMouseY = window.innerHeight / 2;
+        }
+
+        // Function to create a single fire particle
+        function createFireParticle(x, y, deltaX, deltaY) {
+            // Convert screen coordinates to normalized device coordinates (-1 to 1)
+            const mouseNDC = new THREE.Vector3(
+                (x / window.innerWidth) * 2 - 1,
+                -(y / window.innerHeight) * 2 + 1,
+                0.5 // Z-position in NDC. 0.5 is a good mid-point.
+            );
+
+            // Unproject the mouse coordinates to get a world position
+            mouseNDC.unproject(camera);
+
+            // Calculate a point on a plane at a specific Z-depth (e.g., 0, where the login box roughly is)
+            const targetZ = 0; // World Z-coordinate where particles should appear
+            // This calculation projects the 2D mouse coordinate onto the targetZ plane in 3D space
+            const particleWorldX = camera.position.x + (mouseNDC.x - camera.position.x) * (camera.position.z - targetZ) / (camera.position.z - mouseNDC.z);
+            const particleWorldY = camera.position.y + (mouseNDC.y - camera.position.y) * (camera.position.z - targetZ) / (camera.position.z - mouseNDC.z);
+            const particleWorldZ = targetZ;
+
+            const initialSize = 7 + Math.random() * 8; // Larger initial size for more impact
+            const material = new THREE.SpriteMaterial({
+                map: particleTexture,
+                color: new THREE.Color(), // Will be set dynamically
+                transparent: true,
+                opacity: 1,
+                blending: THREE.AdditiveBlending // Essential for glowing fire effect
+            });
+
+            const particle = new THREE.Sprite(material);
+            particle.position.set(particleWorldX, particleWorldY, particleWorldZ);
+            particle.scale.set(initialSize, initialSize, 1); // Set initial scale
+            particle.initialSize = initialSize; // Store initial size
+
+            // Assign initial fire color (e.g., from the red/orange spectrum)
+            const initialColorIndex = Math.floor(Math.random() * 3); // Red, OrangeRed, DarkOrange
+            particle.material.color.copy(fireColors[initialColorIndex]);
+            particle.baseColor = fireColors[initialColorIndex].clone(); // Store base color for progression
+
+            // Store particle properties for animation
+            // Initial velocity based on cursor movement
+            const speedFactor = 0.5; // Adjust this to control how much cursor movement affects particle speed
+            particle.velocity = new THREE.Vector3(
+                (deltaX * speedFactor) + (Math.random() - 0.5) * 1.5, // Cursor X movement + random wobble
+                (deltaY * -speedFactor) + (Math.random() * 4 + 3), // Cursor Y movement (inverted) + upward force
+                (Math.random() - 0.5) * 1.5  // Random depth spread
+            );
+            particle.lifetime = 0;
+            particle.maxLifetime = 90 + Math.random() * 90; // Longer lifetime for more sustained flames
+
+            scene.add(particle);
+            fireParticles.push(particle);
+        }
+
+        function onDocumentMouseMove(event) {
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+
+            // Calculate mouse movement delta
+            const deltaX = (mouseX - prevMouseX) * 0.1; // Scale down for smoother effect
+            const deltaY = (mouseY - prevMouseY) * 0.1; // Scale down for smoother effect
+
+            // Update previous mouse position
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+
+            // Apply 3D tilt to login box based on mouse position (relative to center)
+            const rotateX = -(mouseY - windowHalfY) * 0.005; // Invert Y for natural tilt
+            const rotateY = (mouseX - windowHalfX) * 0.005;
+            loginBox.style.setProperty('--rotateX', `${rotateX}deg`);
+            loginBox.style.setProperty('--rotateY', `${rotateY}deg`);
+
+            // Create fire particles at cursor position, passing delta
+            if (fireParticles.length < maxFireParticles) {
+                for (let i = 0; i < 5; i++) { // Create even more particles per mouse move for denser fire
+                    createFireParticle(event.clientX, event.clientY, deltaX, deltaY);
+                }
+            }
+        }
+
+        function onWindowResize() {
+            windowHalfX = window.innerWidth / 2;
+            windowHalfY = window.innerHeight / 2;
+
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            // Re-initialize prevMouseX/Y on resize
+            prevMouseX = window.innerWidth / 2;
+            prevMouseY = window.innerHeight / 2;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update and remove fire particles
+            for (let i = fireParticles.length - 1; i >= 0; i--) {
+                const particle = fireParticles[i];
+
+                // Update position
+                particle.position.add(particle.velocity);
+                particle.velocity.y -= 0.05; // Stronger downward pull (gravity-like) to make upward motion more natural
+                particle.velocity.x += (Math.random() - 0.5) * 0.1; // Add subtle horizontal wobble
+                particle.velocity.z += (Math.random() - 0.5) * 0.1; // Add subtle depth wobble
+
+                // Update lifetime
+                particle.lifetime++;
+                const lifeRatio = particle.lifetime / particle.maxLifetime;
+
+                // --- Realistic Opacity and Scale Curve ---
+                let opacity = 1;
+                let scaleFactor = 1;
+
+                if (lifeRatio < 0.1) { // Rapid initial growth, full opacity
+                    opacity = 1;
+                    scaleFactor = 1 + lifeRatio * 4; // Fast growth
+                } else if (lifeRatio < 0.7) { // Slower growth, start fading
+                    opacity = 1 - (lifeRatio - 0.1) / 0.6; // Gradual fade
+                    scaleFactor = 1 + 0.1 * 4 + (lifeRatio - 0.1) * 0.5; // Continue growing slowly
+                } else { // Rapid fade and shrink at the end
+                    opacity = (1 - lifeRatio) * 3; // Faster fade
+                    scaleFactor = (1 - lifeRatio) * 2; // Shrink
+                }
+
+                particle.material.opacity = Math.max(0, opacity);
+                particle.scale.setScalar(particle.initialSize * Math.max(0, scaleFactor));
+
+                // --- Dynamic Color Progression ---
+                if (lifeRatio < 0.5) { // Transition from initial color to yellow/gold
+                    const targetColor = fireColors[3]; // Gold
+                    particle.material.color.lerpColors(particle.baseColor, targetColor, lifeRatio * 2);
+                } else { // Transition from yellow/gold to white/blue (hottest)
+                    const startColor = fireColors[3]; // Gold
+                    const targetColor = fireColors[5]; // FloralWhite (or 6 for LightBlue)
+                    particle.material.color.lerpColors(startColor, targetColor, (lifeRatio - 0.5) * 2);
+                }
+
+
+                // Remove if lifetime exceeded
+                if (particle.lifetime > particle.maxLifetime) {
+                    scene.remove(particle);
+                    fireParticles.splice(i, 1);
+                }
+            }
+
+            // Camera movement based on mouse (less aggressive as fire is now primary focus)
+            camera.position.x += ((mouseX - windowHalfX) * 0.2 - camera.position.x) * 0.05;
+            camera.position.y += (-(mouseY - windowHalfY) * 0.2 - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize Three.js scene on window load
+        window.onload = function () {
+            init();
+            animate();
+        };
+    </script>
+</body>
+</html>
